@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { toast } from "@/components/ui/use-toast"
-import CodeEditor from "@/components/editor/code-editor"
+import { CodeEditor } from "@/components/editor/CodeEditor"
 
 export default function DemoPage() {
   const router = useRouter()
@@ -304,7 +304,11 @@ app.listen(port, () => {
         </div>
 
         <div className="flex flex-1 flex-col">
-          <CodeEditor file={demoProject.activeFile} />
+          <CodeEditor 
+            files={demoProject.files} 
+            onSave={async () => {}} 
+            onCreate={async () => {}} 
+          />
         </div>
 
         <div className="w-80 border-l">

@@ -34,7 +34,6 @@ export const initSocketServer = (req: NextApiRequest, res: NextApiResponseWithSo
       // Join project room
       socket.on("join:project", async ({ projectId }) => {
         try {
-          // Check if user has access to this project
           const hasAccess = await hasProjectAccess(projectId, userId)
 
           if (!hasAccess) {
@@ -42,10 +41,8 @@ export const initSocketServer = (req: NextApiRequest, res: NextApiResponseWithSo
             return
           }
 
-          // Join the project room
           socket.join(`project:${projectId}`)
 
-          // Record user activity
           await insertOne(COLLECTIONS.ACTIVITIES, {
             type: ActivityType.USER_JOINED,
             projectId: new ObjectId(projectId),
@@ -53,13 +50,11 @@ export const initSocketServer = (req: NextApiRequest, res: NextApiResponseWithSo
             createdAt: new Date(),
           })
 
-          // Notify others that user joined
           socket.to(`project:${projectId}`).emit("user:joined", {
             userId,
             timestamp: new Date(),
           })
 
-          // Send active users in this project
           const activeUsers = await getActiveProjectUsers(projectId)
           io.to(`project:${projectId}`).emit("users:active", activeUsers)
 
@@ -75,14 +70,12 @@ export const initSocketServer = (req: NextApiRequest, res: NextApiResponseWithSo
         try {
           socket.join(`file:${fileId}`)
 
-          // Notify others that user is editing this file
           socket.to(`project:${projectId}`).emit("file:user-editing", {
             fileId,
             userId,
             timestamp: new Date(),
           })
 
-          // Get file content
           const file = await findById(COLLECTIONS.FILES, fileId)
 
           if (file) {
@@ -101,7 +94,6 @@ export const initSocketServer = (req: NextApiRequest, res: NextApiResponseWithSo
         try {
           const db = await getDb()
 
-          // Update file in database
           await db.collection(COLLECTIONS.FILES).updateOne(
             { _id: new ObjectId(fileId) },
             {
@@ -112,7 +104,6 @@ export const initSocketServer = (req: NextApiRequest, res: NextApiResponseWithSo
             },
           )
 
-          // Record activity
           await insertOne(COLLECTIONS.ACTIVITIES, {
             type: ActivityType.FILE_UPDATED,
             projectId: new ObjectId(projectId),
@@ -121,7 +112,6 @@ export const initSocketServer = (req: NextApiRequest, res: NextApiResponseWithSo
             createdAt: new Date(),
           })
 
-          // Broadcast to others editing this file
           socket.to(`file:${fileId}`).emit("file:updated", {
             fileId,
             content,
@@ -138,20 +128,17 @@ export const initSocketServer = (req: NextApiRequest, res: NextApiResponseWithSo
       // Handle chat messages
       socket.on("chat:message", async ({ projectId, content }) => {
         try {
-          // Save message to database
           const message = await insertOne(COLLECTIONS.MESSAGES, {
             content,
             projectId: new ObjectId(projectId),
             userId: new ObjectId(userId),
           })
 
-          // Get user details
           const db = await getDb()
           const user = await db.collection(COLLECTIONS.USERS).findOne({
             _id: new ObjectId(userId),
           })
 
-          // Broadcast message to project room
           io.to(`project:${projectId}`).emit("chat:message", {
             id: message._id.toString(),
             content: message.content,
@@ -173,13 +160,11 @@ export const initSocketServer = (req: NextApiRequest, res: NextApiResponseWithSo
         try {
           socket.join(`call:${projectId}`)
 
-          // Get user info
           const db = await getDb()
           const user = await db.collection(COLLECTIONS.USERS).findOne({
             _id: new ObjectId(userId),
           })
 
-          // Record activity
           await insertOne(COLLECTIONS.ACTIVITIES, {
             type: ActivityType.VOICE_CALL_STARTED,
             projectId: new ObjectId(projectId),
@@ -187,7 +172,6 @@ export const initSocketServer = (req: NextApiRequest, res: NextApiResponseWithSo
             createdAt: new Date(),
           })
 
-          // Get all participants in the call
           const socketsInRoom = await io.in(`call:${projectId}`).fetchSockets()
           const participants = await Promise.all(
             socketsInRoom.map(async (s) => {
@@ -200,7 +184,6 @@ export const initSocketServer = (req: NextApiRequest, res: NextApiResponseWithSo
             }),
           )
 
-          // Notify everyone in the call
           io.to(`call:${projectId}`).emit("call:user-joined", {
             user: {
               id: userId,
@@ -220,7 +203,6 @@ export const initSocketServer = (req: NextApiRequest, res: NextApiResponseWithSo
         try {
           socket.leave(`call:${projectId}`)
 
-          // Record activity
           await insertOne(COLLECTIONS.ACTIVITIES, {
             type: ActivityType.VOICE_CALL_ENDED,
             projectId: new ObjectId(projectId),
@@ -228,13 +210,11 @@ export const initSocketServer = (req: NextApiRequest, res: NextApiResponseWithSo
             createdAt: new Date(),
           })
 
-          // Get user info
           const db = await getDb()
           const user = await db.collection(COLLECTIONS.USERS).findOne({
             _id: new ObjectId(userId),
           })
 
-          // Get remaining participants
           const socketsInRoom = await io.in(`call:${projectId}`).fetchSockets()
           const participants = await Promise.all(
             socketsInRoom.map(async (s) => {
@@ -247,7 +227,6 @@ export const initSocketServer = (req: NextApiRequest, res: NextApiResponseWithSo
             }),
           )
 
-          // Notify everyone in the call
           io.to(`call:${projectId}`).emit("call:user-left", {
             user: {
               id: userId,
@@ -268,14 +247,12 @@ export const initSocketServer = (req: NextApiRequest, res: NextApiResponseWithSo
         try {
           console.log("Client disconnected:", socket.id)
 
-          // Find all projects this user was active in
           const rooms = Array.from(socket.rooms)
           const projectRooms = rooms.filter((room) => room.startsWith("project:"))
 
           for (const room of projectRooms) {
             const projectId = room.replace("project:", "")
 
-            // Record user left activity
             await insertOne(COLLECTIONS.ACTIVITIES, {
               type: ActivityType.USER_LEFT,
               projectId: new ObjectId(projectId),
@@ -283,13 +260,11 @@ export const initSocketServer = (req: NextApiRequest, res: NextApiResponseWithSo
               createdAt: new Date(),
             })
 
-            // Notify others that user left
             socket.to(room).emit("user:left", {
               userId,
               timestamp: new Date(),
             })
 
-            // Update active users
             const activeUsers = await getActiveProjectUsers(projectId)
             io.to(room).emit("users:active", activeUsers)
           }
@@ -310,20 +285,15 @@ async function getActiveProjectUsers(projectId: string) {
   try {
     const db = await getDb()
 
-    // Get all collaborators
     const collaborators = await db
       .collection(COLLECTIONS.PROJECT_COLLABORATORS)
-      .find({
-        projectId: new ObjectId(projectId),
-      })
+      .find({ projectId: new ObjectId(projectId) })
       .toArray()
 
-    // Get project owner
     const project = await db.collection(COLLECTIONS.PROJECTS).findOne({
       _id: new ObjectId(projectId),
     })
 
-    // Get user details
     const userIds = [...collaborators.map((c) => c.userId), project?.ownerId].filter(Boolean)
 
     const users =
@@ -334,27 +304,24 @@ async function getActiveProjectUsers(projectId: string) {
             .toArray()
         : []
 
-    // Format response
     return [
-      // Owner
       ...(project
         ? [
             {
               ...(users.find((u) => u._id.toString() === project.ownerId.toString()) || {}),
               id: project.ownerId.toString(),
               role: "OWNER",
-              online: true, // In a real implementation, check if they're actually online
+              online: true,
             },
           ]
         : []),
-      // Collaborators
       ...collaborators.map((c) => {
         const user = users.find((u) => u._id.toString() === c.userId.toString())
         return {
           ...user,
           id: c.userId.toString(),
           role: c.role,
-          online: true, // In a real implementation, check if they're actually online
+          online: true,
         }
       }),
     ]
@@ -363,6 +330,3 @@ async function getActiveProjectUsers(projectId: string) {
     return []
   }
 }
-\
-Let's update the package.json to include MongoDB dependencies:
-

@@ -13,14 +13,7 @@ const transporter = nodemailer.createTransport({
   logger: true, // Enable logger
 })
 
-// Verify transporter configuration
-transporter.verify(function (error, success) {
-  if (error) {
-    console.error("SMTP Connection Error:", error)
-  } else {
-    console.log("SMTP Server is ready to send messages")
-  }
-})
+// Transporter is ready to use
 
 export async function sendTeamInvitationEmail({
   to,

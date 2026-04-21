@@ -3,10 +3,10 @@ import type { NextRequest } from "next/server"
 import { getToken } from "next-auth/jwt"
 
 export async function middleware(request: NextRequest) {
-  // Use the secret from auth options
+  // Use the secret from environment
   const token = await getToken({
     req: request,
-    secret: "91e69a7a2e702e848ded6e3aea3e2926a529a02a7c4e9e88ea38645aa4ccddae",
+    secret: process.env.NEXTAUTH_SECRET,
   })
 
   const isAuthenticated = !!token
